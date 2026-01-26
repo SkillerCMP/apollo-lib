@@ -3921,62 +3921,6 @@ size_t apply_sw_patch_code(uint8_t *data, size_t dsize, const code_entry_t* code
 	return (dsize);
 }
 
-
-static char apollo_pick_path_sep(const char* base)
-{
-    if (!base || !*base)
-    {
-#ifdef _WIN32
-        return '\\';
-#else
-        return '/';
-#endif
-    }
-
-    const char* last_fwd = strrchr(base, '/');
-    const char* last_bck = strrchr(base, '\\');
-
-    if (last_bck && (!last_fwd || last_bck > last_fwd))
-        return '\\';
-
-    if (last_fwd)
-        return '/';
-
-#ifdef _WIN32
-    return '\\';
-#else
-    return '/';
-#endif
-}
-
-static void apollo_path_join(char* out, size_t out_sz, const char* base, const char* leaf)
-{
-    if (!out || out_sz == 0)
-        return;
-
-    out[0] = 0;
-
-    if (!base) base = "";
-    if (!leaf) leaf = "";
-
-    // Copy base
-    snprintf(out, out_sz, "%s", base);
-
-    size_t n = strlen(out);
-    if (n > 0 && out[n-1] != '/' && out[n-1] != '\\')
-    {
-        char sep = apollo_pick_path_sep(base);
-        if (n + 1 < out_sz)
-        {
-            out[n] = sep;
-            out[n+1] = 0;
-        }
-    }
-
-    // Append leaf
-    strncat(out, leaf, out_sz - strlen(out) - 1);
-}
-
 static void add_bsd_vars_python(struct _mp_state_ctx_t *upy_ctx)
 {
 	list_node_t *node;
@@ -4038,7 +3982,7 @@ size_t apply_py_script_code(uint8_t** src_data, size_t dsize, const code_entry_t
 		add_host_vars_python(upy);
 
 		char py_path[256];
-		apollo_path_join(py_path, sizeof(py_path), (char*) host_callback(APOLLO_HOST_DATA_PATH, NULL), "python");
+		snprintf(py_path, sizeof(py_path), "%s%s", (char*) host_callback(APOLLO_HOST_DATA_PATH, NULL), "python");
 		LOG("Python import path: %s", py_path);
 
 		micropy_obj_list_init(upy, (MP_OBJ_FROM_PTR(&(upy)->vm.mp_sys_path_obj)), 0);
