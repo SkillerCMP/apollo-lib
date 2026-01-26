@@ -1,6 +1,12 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
 #include "apollo.h"
 
 #ifdef __PS3_PC__
@@ -10,6 +16,98 @@
 #endif
 
 static int log = 0;
+
+static void ensure_trailing_sep(char* path, size_t cap)
+{
+    if (!path || cap == 0) return;
+    size_t n = strlen(path);
+    if (n == 0) return;
+
+    char c = path[n-1];
+    if (c == '/' || c == '\\') return;
+
+#ifdef _WIN32
+    char sep = '\\';
+#else
+    // Prefer the style already used in the path, otherwise '/'
+    char sep = (strchr(path, '\\') && !strchr(path, '/')) ? '\\' : '/';
+#endif
+
+    if (n + 1 < cap)
+    {
+        path[n] = sep;
+        path[n+1] = 0;
+    }
+}
+
+static void* cli_host_callback(int id, int* size)
+{
+    static char data_path[1024];
+
+    switch (id)
+    {
+    case APOLLO_HOST_DATA_PATH:
+    case APOLLO_HOST_TEMP_PATH:
+        if (!data_path[0])
+        {
+            const char* env = getenv("APOLLO_DATA_PATH");
+            if (env && *env)
+            {
+                strncpy(data_path, env, sizeof(data_path)-2);
+                data_path[sizeof(data_path)-2] = 0;
+            }
+            else
+            {
+#ifdef _WIN32
+                char mod[1024];
+                DWORD l = GetModuleFileNameA(NULL, mod, (DWORD)sizeof(mod));
+                if (l > 0 && l < sizeof(mod))
+                {
+                    mod[l] = 0;
+                    // strip filename, keep directory
+                    for (int i = (int)l - 1; i >= 0; --i)
+                    {
+                        if (mod[i] == '\\' || mod[i] == '/')
+                        {
+                            mod[i+1] = 0;
+                            break;
+                        }
+                    }
+                    strncpy(data_path, mod, sizeof(data_path)-2);
+                    data_path[sizeof(data_path)-2] = 0;
+                }
+                else
+                {
+                    strncpy(data_path, ".\\", sizeof(data_path)-2);
+                    data_path[sizeof(data_path)-2] = 0;
+                }
+#else
+                char cwd[1024];
+                if (getcwd(cwd, sizeof(cwd)))
+                {
+                    strncpy(data_path, cwd, sizeof(data_path)-2);
+                    data_path[sizeof(data_path)-2] = 0;
+                }
+                else
+                {
+                    strncpy(data_path, "./", sizeof(data_path)-2);
+                    data_path[sizeof(data_path)-2] = 0;
+                }
+#endif
+            }
+
+            ensure_trailing_sep(data_path, sizeof(data_path));
+        }
+
+        if (size) *size = (int)strlen(data_path);
+        return data_path;
+
+    default:
+        if (size) *size = 1;
+        return "";
+    }
+}
+
 
 void print_usage(const char* argv0)
 {
@@ -130,7 +228,7 @@ int main(int argc, char **argv)
                 get_user_options(code);
 
             printf("\n===============[ Applying code #%ld ]===============\n", len);
-            if (apply_cheat_patch_code((argc == 2) ? code->file : argv[3], code, NULL))
+            if (apply_cheat_patch_code((argc == 2) ? code->file : argv[3], code, cli_host_callback))
                 printf("- OK\n");
             else
                 printf("- ERROR!\n");
