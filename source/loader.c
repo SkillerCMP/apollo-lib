@@ -8,6 +8,30 @@
 #include <dbglogger.h>
 #define LOG dbglogger_log
 
+static char* strcasestr_simple(const char* haystack, const char* needle)
+{
+    if (!haystack || !needle || !*needle)
+        return (char*) haystack;
+
+    for (const char* h = haystack; *h; h++)
+    {
+        const char* h_it = h;
+        const char* n_it = needle;
+
+        while (*h_it && *n_it &&
+               tolower((unsigned char)*h_it) == tolower((unsigned char)*n_it))
+        {
+            h_it++;
+            n_it++;
+        }
+
+        if (!*n_it)
+            return (char*) h;
+    }
+
+    return NULL;
+}
+
 
 uint64_t x_to_u64(const char *hex)
 {
@@ -46,6 +70,7 @@ uint8_t * x_to_u8_buffer(const char *hex)
 	if (len % 2 != 0)
 		return NULL;
 
+	len /= 2;
 	result = (uint8_t *)malloc(len);
 	memset(result, 0, len);
 	ptr = result;
@@ -459,6 +484,23 @@ int load_patch_code_list(char* buffer, list_t* list_codes, apollo_get_files_cb_t
 
 			end = str_ends_with(code->name, " ---");
 			if (end) *end = 0;
+			// Detect "PYTHON:" marker anywhere in the display name and strip it out.
+			// This allows headers like: [SomePattern\\PYTHON: My Script]
+			char* py = strcasestr_simple(code->name, "PYTHON:");
+			if (py)
+			{
+				code->type = APOLLO_CODE_PYTHON;
+				while (py)
+				{
+					char* after = py + 7; // strlen("PYTHON:")
+					while (*after == ' ' || *after == '\t')
+						after++;
+
+					memmove(py, after, strlen(after) + 1);
+					py = strcasestr_simple(py, "PYTHON:");
+				}
+			}
+
 		}
 	}
 
